@@ -1,30 +1,27 @@
 /*
- * Spi.cpp
+ * SPIController.cpp
  *
- *  Created on: Dec 31, 2024
+ *  Created on: Dec 31, 2025
  *      Author: Jack Edgely
  */
 
 #include "sleep.h"
 #include "SpiController.h"
 
-SpiController::SpiController(uint32_t BaseAddressInputs, uint32_t BaseAddressOutputs, Mode spiMode, ClockFrequency frequency)
+SpiController::SpiController(uint32_t BaseAddressInputs, uint32_t BaseAddressOutputs)
 {
 	AXI_IN = (AXI_GPIO_IN*)(BaseAddressInputs);
 	AXI_OUT = (AXI_GPIO_OUT*)(BaseAddressOutputs);
+	this->Init();
+}
 
+void SpiController::Init()
+{
 	AXI_IN->Reset = 0;
-
-	AXI_IN->SPIMode = spiMode;
-
-	AXI_IN->Frequency = frequency;
-
 	AXI_IN->CS = Idle;
-
-	// Yell dead cell
-	AXI_IN->TxBuffer = 0xDEADCE11;
-
-	AXI_IN->Reset = 1;
+	AXI_IN->Frequency = MHz25;
+	AXI_IN->TxBuffer = 0xDEADCE11; // Yell
+	AXI_IN->SPIMode = Mode0;
 }
 
 void SpiController::Enable()
@@ -106,6 +103,9 @@ uint32_t SpiController::ReadBuffer()
 }
 
 SpiController::~SpiController()
+{
+
+}
 {
 
 }
