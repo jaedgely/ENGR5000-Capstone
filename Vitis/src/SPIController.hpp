@@ -1,7 +1,7 @@
 /*
- * Spi.h
+ * SPIController.h
  *
- *  Created on: Dec 31, 2024
+ *  Created on: Dec 23, 2025
  *      Author: Jack Edgely
  */
 
@@ -11,11 +11,10 @@
 #include "xgpio.h"
 #include "xparameters.h"
 #include <stdint.h>
-#include <map>
 
 enum ClockFrequency
 {
-	MHz50 = 0x0,
+	//MHz50 = 0x0,
 	MHz25 = 0x1,
 	MHz12P5 = 0x2,
 	MHz6P25 = 0x3,
@@ -33,7 +32,7 @@ enum Mode
 	Mode3 = 0x3
 };
 
-/*
+
 enum ChipSelect
 {
 	Idle 	= 0xFF,	// 1 1 1 1 1 1 1 1
@@ -46,24 +45,16 @@ enum ChipSelect
 	Device6 = 0xBF, // 1 0 1 1 1 1 1 1
 	Device7 = 0x7F, // 0 1 1 1 1 1 1 1
 };
-*/
 
-enum ChipSelect
-{
-	Idle 	= 0x1F,	  // 1 1 1 1 1 1 1 1
-	Device0 = 0x1E,	// 1 1 1 1 1 1 1 0
-	Device1 = 0x1D, // 1 1 1 1 1 1 0 1
-	Device2 = 0x1B, // 1 1 1 1 1 0 1 1
-	Device3 = 0x17, // 1 1 1 1 0 1 1 1
-	Device4 = 0x0F, // 1 1 1 0 1 1 1 1
-};
-
-/* TODO
+/*  TODO
  * 		Implement some sort of timeout to escape the read/write commands if the thing is locked up
  */
-class SpiController {
+
+class SpiController
+{
 private:
-	typedef struct AXI_GPIO_IN
+
+	typedef struct
 	{
 		// AXI 0 CHANNEL 0
 		uint32_t Reset 				: 1;	// 0 resets device, 1 enables it (enable doesnt mean it will send data);
@@ -77,36 +68,26 @@ private:
 		// AXI 0 CHANNEL 1
 		uint32_t TxBuffer 			: 32;	// TX Data buffer. Whatever is written here is what is written over SPI.
 		const uint32_t AXI_0_RESERVED_1   : 32; 	// Reserved Area
-	} AXI_GPIO_IN_t;
+	} AXI_GPIO_IN;
 
-	typedef struct AXI_GPIO_OUT
+	typedef struct
 	{
 		// AXI 1 CHANNEL 0
-	  uint64_t Busy : 1;					  
-		uint64_t AXI_RESERVED_0 : 63;
+		uint64_t Busy : 1;					// Status bit for uC
+		const uint64_t AXI_RESERVED_0 : 63;
 
 		// AXI 1 CHANNEL 1;
-		uint32_t RxBuffer : 32;				
-		uint32_t AXI_RESERVED_1 : 32;
-	} AXI_GPIO_OUT_t;
+		uint32_t RxBuffer : 32;				// RX Data buffer
+		const uint32_t AXI_RESERVED_1 : 32;
+	} AXI_GPIO_OUT;
 
-	volatile AXI_GPIO_IN_t *AXI_IN;
-	const volatile AXI_GPIO_OUT_t *AXI_OUT;
+	volatile AXI_GPIO_IN *AXI_IN;
+	volatile AXI_GPIO_OUT *AXI_OUT;
 
-	/*
-	const std::map<ClockFrequency, float> TimeoutLUT =
-	   {{MHz50, 	32/(50000000)},
-		{MHz25, 	32/(25000000)},
-		{MHz12P5, 	32/(12500000)},
-		{MHz6P25,	32/(6250000)},
-		{MHz3P125,	32/(3125000)},
-		{MHz1P5625,	32/(1562500)},
-		{KHz781,	32/(781000)},
-		{KHz390,	32/(390000)}};
-	*/
+	void Init();
 public:
 
-	SpiController(uint32_t BaseAddressInputs, uint32_t BaseAddressOutputs, Mode spiMode, ClockFrequency frequency);
+	SpiController(uint32_t BaseAddressInputs, uint32_t BaseAddressOutputs);
 
 	void Enable();
 	void Disable();
