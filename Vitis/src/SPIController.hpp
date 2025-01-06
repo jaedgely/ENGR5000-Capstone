@@ -14,7 +14,7 @@
 
 enum ClockFrequency
 {
-	//MHz50 = 0x0,
+	MHz50 = 0x0,
 	MHz25 = 0x1,
 	MHz12P5 = 0x2,
 	MHz6P25 = 0x3,
