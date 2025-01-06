@@ -49,9 +49,9 @@ module I2CController#(parameter NUM_BYTES = 1)(
         
     reg[1:0] clockcounter = 2'b00;
     reg[3:0] bit_count;
-    reg[$bits(NUM_BYTES)-1:0] byte_count;
    
     reg OP_CODE_LATCHED;
+    reg[1:0] NACK_COUNT;
     STATE_ENUM STATE;
     
     // Busy flag logic
@@ -104,19 +104,26 @@ module I2CController#(parameter NUM_BYTES = 1)(
                                         end
                                     end    
                             ACKNOWL:begin
-                                        if (NACK || (bytessent == send2bytes + 1)) begin
+                                        if (NACK_COUNT == 3 || (bytessent == send2bytes + 1)) begin
                                             STATE <= STOP;
                                             I2C_SDA_o <= 'b0;
-                                        end else begin
-                                            STATE <= OP_CODE_LATCHED ? READING : WRITING;
-                                            I2C_SDA_o <= OP_CODE_LATCHED ? 'b1 : SR_SDAO_q; 
+                                        end else if (!NACK) begin
+                                            if (OP_CODE_LATCHED) begin
+                                                STATE <= READING;
+                                                I2C_SDA_o <= 'b1;
+                                            end else begin
+                                                STATE <= WRITING;
+                                                I2C_SDA_o <= SR_SDAO_q;
+                                            end
                                         end    
                                     end
                             READING:begin
                                         I2C_SDA_o <= 'b1;
                                         if (bit_count == 7) begin
                                             STATE <= ACKNOWL;
-                                            I2C_SDA_o <= 'b1;   // Tristate
+                                            // If reading and not the last byte, pull line low. Otherwise tristate
+                                            I2C_SDA_o = OP_CODE_LATCHED && (bytessent < send2bytes + 1) ? 'b0 : 'b1;
+                                            //I2C_SDA_o <= 'b1;
                                         end    
                                     end
                             WRITING:begin
@@ -165,26 +172,33 @@ module I2CController#(parameter NUM_BYTES = 1)(
     always_ff@(clockcounter) begin
         if (!rst_n) begin
             NACK <= 0;
+            NACK_COUNT <= 0;
             I2C_SCL_o <= 1;
         end else begin
             case(cccheat)
-            2'b00:  begin
-                    end
-                   
+            2'b00:  begin end
             2'b01:  begin
                         if (STATE != IDLE && STATE != START) begin
                             I2C_SCL_o <= ~I2C_SCL_o;
                         end
                         if (STATE == ACKNOWL) begin
-                            NACK <= I2C_SDA_i;
+                            if (I2C_SDA_i == 0 || (OP_CODE_LATCHED && bytessent == send2bytes + 1)) begin
+                                NACK <= 0;
+                                NACK_COUNT <= 0;
+                            end else begin
+                                NACK <= 1;
+                                NACK_COUNT <= NACK_COUNT + 1;
+                            end
                         end
                         if (STATE == STOP) begin
+                            NACK = NACK_COUNT == 3;
                             I2C_SCL_o <= 1;
                         end    
                     end
             2'b10:  begin
                         if (STATE == IDLE || STATE == START || START == STOP) begin
                             I2C_SCL_o <= 1;  
+                            NACK_COUNT <= 0;
                         end
                     end
             2'b11:  begin
@@ -194,6 +208,7 @@ module I2CController#(parameter NUM_BYTES = 1)(
                     end
             default:begin
                         I2C_SCL_o <= 1;
+                        NACK <= 1;
                     end        
             endcase
         end
@@ -205,10 +220,11 @@ module I2CController#(parameter NUM_BYTES = 1)(
        if (!rst_n) begin
             bit_count <= 0;
         end else if (STATE == IDLE || STATE == START) begin
-            bit_count <= 0;   
+            bit_count <= 0;  
+            bytessent <= 0; 
         end else begin
             bit_count <= bit_count + 1;
-            if (bit_count == 8) begin   // This will actually trigged on the 8th clock cycle 
+            if (bit_count == 8 && !NACK) begin   // This will actually trigged on the 8th clock cycle 
                 bytessent <= bytessent + 1;
                 bit_count <= 0;
             end
