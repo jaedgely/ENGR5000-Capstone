@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
+// Company: Wentworth Institute of Technology
+// Engineer: Jack Edgely
 // 
 // Create Date: 01/07/2025 08:24:38 AM
 // Design Name: 
