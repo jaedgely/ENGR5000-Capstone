@@ -3,7 +3,7 @@
 // Company: Wentworth Institute of Technology
 // Engineer: Jack Edgely
 // 
-// Create Date: 01/07/2025 08:19:20 AM
+// Create Date: 12/29/2024 05:05:47 PM
 // Design Name: 
 // Module Name: SPIController
 // Project Name: 
@@ -15,17 +15,17 @@
 // 
 // Revision:
 // Revision 0.01 - File Created
-// Additional Comments: Read the following
-// https://www.analog.com/en/resources/analog-dialogue/articles/introduction-to-spi-interface.html
+// Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
+
 
 typedef enum logic[1:0]
 {
     IDLE     = 'h0,
     START = 'h1,
     ACTIVE   = 'h2,
-    STOP = 'h4
+    STOP = 'h3
 } SPI_STATES;
 
 module SPIController#(parameter NUM_BYTES = 2, parameter PERIPH_DEVICES = 1)
@@ -37,19 +37,19 @@ module SPIController#(parameter NUM_BYTES = 2, parameter PERIPH_DEVICES = 1)
     input CPHA,
     input [1:0] DATA_LEN,
     input [PERIPH_DEVICES-1:0] CS_i,
-    input [NUM_BYTES-1:0][7:0] D_TX,
+    input [NUM_BYTES-1:0][7:0] TxBuffer,
     input CIPO,
     output COPI,
     output PCLK,
     output BUSY,
     output STARTING,
     output reg [PERIPH_DEVICES-1:0] CS_gpio,
-    output reg [NUM_BYTES-1:0][7:0] Q_RX
+    output reg [NUM_BYTES-1:0][7:0] RxBuffer
 );
 
     wire shiftregLoadCommand;
     wire spiclk;
-    wire[NUM_BYTES-1:0][7:0] Q_RX_wires;
+    wire[NUM_BYTES-1:0][7:0] Q_RX;
     
     SPI_STATES STATE;
 
@@ -66,8 +66,8 @@ module SPIController#(parameter NUM_BYTES = 2, parameter PERIPH_DEVICES = 1)
     // If not active, idle at the CPOL Level
     assign PCLK = STATE == ACTIVE ? spiclk : CPOL;
     
-    reg[2:0] bitcount;
-    reg[$bits(NUM_BYTES)-1:0] bytecount;
+    reg[4:0] bitcount; // Count 32
+    
     
     always_ff@(posedge clk, negedge rst_n) begin
         if (!rst_n) begin
@@ -82,14 +82,11 @@ module SPIController#(parameter NUM_BYTES = 2, parameter PERIPH_DEVICES = 1)
                         STATE <= IDLE;
                     end
             START:  STATE <= ACTIVE;
-            ACTIVE: if (bitcount == 'h7 && bytecount == DATA_LEN) begin
-                        STATE <= STOP;
-                        Q_RX <= Q_RX_wires;
-                    end else begin
-                        STATE <= ACTIVE;
+            ACTIVE: STATE <= bitcount == 8 * (DATA_LEN + 1) - 1 ? STOP : ACTIVE; 
+            STOP:   begin
+                    STATE <= IDLE;
+                    RxBuffer <= Q_RX;
                     end
-            //ACTIVE: STATE <= bytecount > DATA_LEN ? STOP : bitcount == 'h7 ? PAUSE : ACTIVE;
-            STOP:   STATE <= IDLE; 
             default: STATE <= IDLE;  
             endcase            
         end    
@@ -98,15 +95,10 @@ module SPIController#(parameter NUM_BYTES = 2, parameter PERIPH_DEVICES = 1)
     always_ff@(posedge clk, negedge rst_n) begin
         if (!rst_n) begin
             bitcount <= 0;
-            bytecount <= 0;
         end else if (STATE == IDLE || STATE == START) begin
             bitcount <= 0;
-            bytecount <= 0;
         end else begin
             bitcount <= bitcount + 1;
-            if (bitcount == 'h7) begin
-                bytecount <= bytecount + 1;
-            end
         end
     end
     
@@ -116,10 +108,10 @@ module SPIController#(parameter NUM_BYTES = 2, parameter PERIPH_DEVICES = 1)
         .rst_n(rst_n),
         .sh(shiftregShiftCommand),
         .ld(STARTING),
-        .D_TX_p(D_TX),
+        .D_TX_p(TxBuffer),
         .D_TX_s(COPI),
         .D_RX_s(CIPO),
-        .D_RX_p(Q_RX_wires)
+        .D_RX_p(Q_RX)
     );
         
 endmodule
