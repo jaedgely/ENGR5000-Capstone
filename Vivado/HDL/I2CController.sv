@@ -24,29 +24,35 @@ typedef enum logic[2:0]
     IDLE    = 'h0,
     START   = 'h1,
     ADDRESS = 'h2,
-    ACKNOWL = 'h4,     
-    WRITING = 'h5,
-    READING = 'h6,
-    STOP    = 'h7
+    ACKNOWL = 'h3,     
+    WRITING = 'h4,
+    READING = 'h5,
+    STOP    = 'h6,
+    RESTART = 'h7
 } STATE_ENUM;
 
-module I2CController#(parameter NUM_BYTES = 1)(
+module I2CController#(parameter NUM_BYTES = 1)
+(
     input clk,                          // Make 4x faster than desired I2C_SCL frequency
-    input rst_n,                        // Reset, active low
-    // Control Bits
-    input start,                        // Starts the read/write operation
-    input OP_CODE,                      // 0 for write, 1 for read
-    input FORCE_CLK,                    // Forces the I2C_SCL line to be driven. Can be used to try to clear the bus if a peripheral device is locked up
-    input send2bytes,  // Bits that let you choose how many bytes you actually want to send, so you can end the transaction early (E.g, parameterized as 3 bytes, but you only want 1. Write 0b01 to here)
-    input [6:0] PERIPH_ADDR,            // Peripheral device address
-    input [(8*NUM_BYTES)-1:0] D_TX,     // Data to send to the peripheral device
+    input rst_n,                        
+    input start,                        
+    input OP_CODE,                      
+    input FORCE_CLK,                    
+    input DATA_LEN, 
+    input SEND_REG_ADDR,          // 0 = no register address, 1 = send address
+    input REG_ADDR_LEN,         // 0 = 8 bit, 1 = 16 bit
+    input [6:0] PERIPH_ADDR,            
+    input [15:0] REG_ADDR,                     
+    input [(8*NUM_BYTES)-1:0] D_TX,     
     
-    output reg [(8*NUM_BYTES)-1:0] Q_RX,    // Data that was read from the peripheral device
-    output BUSY,                        // 0 means I2C controller is free. 1 means it is busy
-    output reg NACK,                    // Sent if there is no acknowledge. Can only be cleared by a hard reset. 1 means there was no acknowledge
-    inout I2C_SCL_t,                    // Clock line to peripheral device
-    inout I2C_SDA_t);                   // Tristate data line (Pushpull, Xilinx does not support open drain)
-        
+    output reg [(8*NUM_BYTES)-1:0] D_RX,   
+    output BUSY,                            //1 == BUSY
+    output reg NACK,                    
+    inout I2C_SCL_t,                        // Tristate clock line. Internal pull-up, open-drain
+    inout I2C_SDA_t                         // Tristate clock line. Internal pull-up, open-drain
+);
+
+    reg SENT_REG_ADDR;
     reg[1:0] clockcounter = 2'b00;
     reg[3:0] bit_count;
    
@@ -58,9 +64,11 @@ module I2CController#(parameter NUM_BYTES = 1)(
     assign BUSY = STATE != IDLE;
     
     // Shift register enable signals
-    wire SR_ADDR_en;
     wire SR_SDAO_en;
     wire SR_SDAI_en;
+    wire SR_REG_ADDR_en;
+    wire SR_PERIPH_ADDR_en;
+    
     assign SR_ADDR_en = STATE == ADDRESS;
     assign SR_SDAO_en = STATE == WRITING;// && bit_count != 8;
     assign SR_SDAI_en = STATE == READING;// && bit_count != 8;
@@ -76,20 +84,29 @@ module I2CController#(parameter NUM_BYTES = 1)(
     assign I2C_SDA_t = I2C_SDA_o ? 'bZ : 'b0;
     assign I2C_SDA_i = I2C_SDA_t;
     
+    wire [7:0] SR_ADDR_in;
+    assign SR_ADDR_in = SEND_REG_ADDR && !SENT_REG_ADDR ? {PERIPH_ADDR[6:0], 1'b0} : {PERIPH_ADDR[6:0], OP_CODE};
+    wire [15:0] SR_SDAO_in;
+    assign SR_SDAO_in = SEND_REG_ADDR && !SENT_REG_ADDR ? REG_ADDR : D_TX;
+    
     always_ff@(clockcounter) begin
         if (!rst_n) begin
             STATE <= IDLE;
+            SENT_REG_ADDR <= 0;
             I2C_SDA_o <= 1; // Tristate    
-            Q_RX <= 'hDEADCE11;
+            D_RX <= 'hDEADCE11;
         end else begin
             case(cccheat)
             // Update state at 0
             2'b00:  begin
                         case (STATE)
                             IDLE:   begin
+                                        if (start) begin
+                                            STATE <= START;
+                                        end
                                         I2C_SDA_o <= 1;         // Tristate
                                         OP_CODE_LATCHED <= OP_CODE;
-                                        if (start) STATE <= START;
+                                        SENT_REG_ADDR <= 0;
                                     end
                             START:  begin
                                         STATE <= ADDRESS;
@@ -104,11 +121,20 @@ module I2CController#(parameter NUM_BYTES = 1)(
                                         end
                                     end    
                             ACKNOWL:begin
-                                        if (NACK_COUNT == 3 || (bytessent == send2bytes + 1)) begin
+                                        if (NACK_COUNT == 3 || (bytessent == DATA_LEN + SEND_REG_ADDR + (SEND_REG_ADDR && REG_ADDR_LEN) + 1)) begin
                                             STATE <= STOP;
                                             I2C_SDA_o <= 'b0;
                                         end else if (!NACK) begin
-                                            if (OP_CODE_LATCHED) begin
+                                            if (SEND_REG_ADDR && !SENT_REG_ADDR) begin
+                                                if (bytessent == REG_ADDR_LEN + 1) begin
+                                                    STATE <= RESTART;
+                                                    I2C_SDA_o <= 1;
+                                                    SENT_REG_ADDR <= 1;
+                                                end else begin  // Send register address via the SDA Out shift register
+                                                    STATE <= WRITING;
+                                                    I2C_SDA_o = SR_SDAO_q;
+                                                end
+                                            end else if (OP_CODE_LATCHED) begin
                                                 STATE <= READING;
                                                 I2C_SDA_o <= 'b1;
                                             end else begin
@@ -122,7 +148,7 @@ module I2CController#(parameter NUM_BYTES = 1)(
                                         if (bit_count == 7) begin
                                             STATE <= ACKNOWL;
                                             // If reading and not the last byte, pull line low. Otherwise tristate
-                                            I2C_SDA_o = OP_CODE_LATCHED && (bytessent < send2bytes + 1) ? 'b0 : 'b1;
+                                            I2C_SDA_o = OP_CODE_LATCHED && (bytessent < DATA_LEN + 1) ? 'b0 : 'b1;
                                             //I2C_SDA_o <= 'b1;
                                         end    
                                     end
@@ -136,6 +162,10 @@ module I2CController#(parameter NUM_BYTES = 1)(
                             STOP:   begin
                                         STATE <= IDLE;
                                     end
+                            RESTART:begin
+                                        STATE <= ADDRESS;
+                                        I2C_SDA_o <= SR_ADDR_q;
+                                    end        
                             default:begin
                                         STATE <= IDLE;
                                         I2C_SDA_o <= 1;
@@ -148,12 +178,14 @@ module I2CController#(parameter NUM_BYTES = 1)(
                         end
                     end
             2'b10:  begin
-                    //
+                        if (STATE == RESTART) begin
+                            I2C_SDA_o <= 0;
+                        end
                     end
             2'b11:  begin
                         if (STATE == STOP) begin
                             I2C_SDA_o <= 1;
-                            Q_RX <= SR_SDAI_q;
+                            D_RX <= SR_SDAI_q;
                         end
                     end
             default:begin
@@ -178,11 +210,11 @@ module I2CController#(parameter NUM_BYTES = 1)(
             case(cccheat)
             2'b00:  begin end
             2'b01:  begin
-                        if (STATE != IDLE && STATE != START) begin
+                        if (STATE != IDLE && STATE != START || FORCE_CLK) begin
                             I2C_SCL_o <= ~I2C_SCL_o;
                         end
                         if (STATE == ACKNOWL) begin
-                            if (I2C_SDA_i == 0 || (OP_CODE_LATCHED && bytessent == send2bytes + 1)) begin
+                            if (I2C_SDA_i == 0 || (OP_CODE_LATCHED && bytessent == DATA_LEN + 1)) begin
                                 NACK <= 0;
                                 NACK_COUNT <= 0;
                             end else begin
@@ -202,7 +234,7 @@ module I2CController#(parameter NUM_BYTES = 1)(
                         end
                     end
             2'b11:  begin
-                        if (STATE != IDLE && STATE != STOP) begin
+                        if (STATE != IDLE && STATE != STOP  || FORCE_CLK) begin
                             I2C_SCL_o <= ~I2C_SCL_o;
                         end
                     end
@@ -214,15 +246,15 @@ module I2CController#(parameter NUM_BYTES = 1)(
         end
     end
     
-    reg[1:0] bytessent = 0;
+    reg[2:0] bytessent = 0;
     // Count num bits/bytes sent 
     always_ff@(posedge cccheat == 2'b00, negedge rst_n) begin
-       if (!rst_n) begin
-            bit_count <= 0;
+        if (!rst_n) begin
+            bit_count <= 0;  
         end else if (STATE == IDLE || STATE == START) begin
             bit_count <= 0;  
             bytessent <= 0; 
-        end else begin
+        end else if (STATE != RESTART) begin
             bit_count <= bit_count + 1;
             if (bit_count == 8 && !NACK) begin   // This will actually trigged on the 8th clock cycle 
                 bytessent <= bytessent + 1;
@@ -249,18 +281,18 @@ module I2CController#(parameter NUM_BYTES = 1)(
         .clk(clockcounter == 2'b01),
         .rst_n(rst_n),
         .sh(SR_ADDR_en),
-        .ld(STATE == START),
-        .d({PERIPH_ADDR, OP_CODE}),
+        .ld(STATE == START || STATE == RESTART),
+        .d(SR_ADDR_in),
         .q(SR_ADDR_q)
-    );        
+    );    
 
     ShiftRegPISO #(8*NUM_BYTES)SR_SDAO
     (
         .clk(clockcounter == 2'b01),
         .rst_n(rst_n),
         .sh(SR_SDAO_en),
-        .ld(STATE == START),
-        .d(D_TX),
+        .ld(STATE == START || STATE == RESTART),
+        .d(SR_SDAO_in),
         .q(SR_SDAO_q)
     );     
 
