@@ -23,17 +23,17 @@ module I2CControllerTop#(parameter NUM_BYTES = 1)
 (
     input clk,                          // 100MHz FPGA clock
     input rst_n,                        // Reset, active low
-    
-    // Control Bits
     input start,                        // Starts the read/write operation
     input OP_CODE,                      // 0 for write, 1 for read
     input FORCE_CLK,
-    input [1:0] FRQ_SEL,                 // Bits to select the frequency
-    input send2bytes,  // Bits that let you choose how many bytes you actually want to send, so you can end the transaction early
+    input DATA_LEN,                     // 0 = 8 bit, 1 = 16 bit
+    input SEND_REG_ADDR,
+    input REG_ADDR_LEN,                 // 0 = 8 bit, 1 = 16bit
+    input [1:0] FRQ_SEL,                // Bits to select the frequency
     input [6:0] PERIPH_ADDR,            // Peripheral device address
+    input [15:0] REG_ADDR,              // Register address
     input [(8*NUM_BYTES)-1:0] D_TX,     // Data to send to the peripheral device
-    
-    output [(8*NUM_BYTES)-1:0] Q_RX,    // Data that was read from the peripheral device
+    output [(8*NUM_BYTES)-1:0] D_RX,    // Data that was read from the peripheral device
     output BUSY,                        // 0 means I2C controller is free. 1 means it is busy
     output NACK,                    // Sent if there is no acknowledge. Can only be cleared by a hard reset. 1 means there was no acknowledge
     inout I2C_SCL_t,                         // Clock line to peripheral device
@@ -60,10 +60,13 @@ module I2CControllerTop#(parameter NUM_BYTES = 1)
         .start(start),
         .OP_CODE(OP_CODE),
         .FORCE_CLK(FORCE_CLK),
-        .send2bytes(send2bytes),
+        .DATA_LEN(DATA_LEN),
+        .SEND_REG_ADDR(SEND_REG_ADDR),
+        .REG_ADDR_LEN(REG_ADDR_LEN),
         .PERIPH_ADDR(PERIPH_ADDR),
+        .REG_ADDR(REG_ADDR),
         .D_TX(D_TX),
-        .Q_RX(Q_RX),
+        .D_RX(D_RX),
         .BUSY(BUSY),
         .NACK(NACK),
         .I2C_SCL_t(I2C_SCL_t),
@@ -79,3 +82,4 @@ module I2CControllerTop#(parameter NUM_BYTES = 1)
     );        
    
 endmodule
+
