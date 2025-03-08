@@ -79,47 +79,32 @@ module I2CController#(parameter FPGA_CLOCK_HZ = 100_000_000)
 
     STATES_t STATE;
     STATES_t NEXT_STATE;
-
+    
     logic sclRisingEdge;
-    logic sentAddr;
     logic sdaRisingEdge;
     logic sclFallingEdge;
     logic sdaFallingEdge;
+    logic sentAddr;
     logic savedOpCode;
-    logic[7:0] savedPeriphAddr;
     logic arbitrationLost;
+    logic[7:0] savedPeriphAddr;
     logic[1:0] nackCounter;
-    logic[3:0] bitCounter;
+    logic[1:0] clockState;
+    logic[2:0] bitCounter;
     logic[3:0] byteCounter;
     logic[10:0] clockCounter;
     logic[10:0] prescale;
     logic [7:0] dataTx; // Stuff periph addr and data tx into one
     logic [7:0] dataRx;
-    
-    // EXAMPLE: PRESCALE == 500
-    //          PRESCALE >> 2 == 125
-    //          PRESCALE >> 1 == 250
-    //          PRESCALE - (PRESCALE >> 1) == 375        
-    assign sdaRisingEdge  = clockCounter == 0;
-    assign sclRisingEdge  = clockCounter == (prescale >> 2) - 1;
-    assign sdaFallingEdge = clockCounter == (prescale >> 1) - 1;
-    assign sclFallingEdge = clockCounter == (prescale - (prescale >> 2)) - 1;
-    
+
+    assign sdaRisingEdge = clockState == 0;
+    assign sclRisingEdge = clockState == 1;
+    assign sdaFallingEdge = clockState == 2;
+    assign sclFallingEdge = clockState == 3;
     assign busy = STATE != IDLE;
     assign loading = STATE == ACK;
     assign starting = STATE == START || STATE == RESTART;
 
-    // Determine prescale for clock counter
-    /*
-    always_comb begin
-        case (freqSel)
-        'b00: prescale = (FPGA_CLOCK_HZ) / (100_000);   
-        'b01: prescale = (FPGA_CLOCK_HZ) / (400_000);   
-        'b10: prescale = (FPGA_CLOCK_HZ) / (1_000_000); 
-        'b11: prescale = (FPGA_CLOCK_HZ) / (3_400_000); 
-        endcase
-    end
-    */
     // Next state logic
     always_comb begin
      // NEXT_STATE = arbitrationLost ? STOP : NEXT_STATE;
@@ -147,7 +132,7 @@ module I2CController#(parameter FPGA_CLOCK_HZ = 100_000_000)
                 end
         WRITE:  NEXT_STATE = bitCounter == 0 & byteCounter != 1 ? ACK : WRITE;
         READ:   begin
-                if (bitCounter == 0 & byteCounter == 2) begin
+                if (bitCounter == 0 & byteCounter != 1) begin
                     if (start) begin
                         NEXT_STATE = RESTART;
                     end else if (stop) begin
@@ -165,11 +150,6 @@ module I2CController#(parameter FPGA_CLOCK_HZ = 100_000_000)
         endcase
     end
     
-    /*/
-     *  TO DO
-     *      Actually implement the arbitration into the code.    
-     *
-    /*/
     /*
     always_ff@(posedge clk, negedge rst_n) begin
         if (~rst_n) begin
@@ -185,6 +165,7 @@ module I2CController#(parameter FPGA_CLOCK_HZ = 100_000_000)
         end
     end
    */
+   
     // I2C_SDA block
     always_ff@(posedge clk, negedge rst_n) begin
         if (~rst_n) begin
@@ -215,13 +196,17 @@ module I2CController#(parameter FPGA_CLOCK_HZ = 100_000_000)
                     sentAddr <= 1;
                     if (start) begin
                         I2C_SDA_o <= 1; // This causes repeated start condition. Dont touch.
-                    end else if (nack) begin;
+                    end else if (nack) begin
                         I2C_SDA_o <= 1;
-                    end else begin
+                    end else if (NEXT_STATE == STOP) begin
+                        I2C_SDA_o <= 0;
+                    end else if (NEXT_STATE == WRITE) begin
                         I2C_SDA_o <= dataTx[7];
+                    end else begin
+                        I2C_SDA_o <= 1;
                     end
                     end    
-            READ:   I2C_SDA_o <= bitCounter == 0 ? 1'b0 : 1'b1;
+            READ:   I2C_SDA_o <= NEXT_STATE == STOP ? 0 : 1;
             WRITE:  I2C_SDA_o <= bitCounter == 0 ? 1'b1 : dataTx[7];
             RESTART:I2C_SDA_o <= 0; // Might need to be I2C_SDA_o <= I2C_SDA_o
             STOP:   I2C_SDA_o <= 1;
@@ -298,10 +283,13 @@ module I2CController#(parameter FPGA_CLOCK_HZ = 100_000_000)
     always_ff@(posedge clk, negedge rst_n) begin
         if (~rst_n) begin
             clockCounter <= 0;
-        end else if (clockCounter == prescale - 1) begin
+            clockState <= 0;
+        end else if (clockCounter == prescale) begin
             clockCounter <= 0;
+            clockState <= clockState + 1;
         end else begin
             clockCounter <= clockCounter + 1;
+            clockState <= clockState;
         end
     end
     
