@@ -31,9 +31,9 @@ module I2CController_tb();
     logic forceClock;
     logic [1:0] freqSel;
     logic [6:0] periphAddr;
-    logic [15:0] regAddr;
-    logic [15:0] dataTx;
-    logic [15:0] dataRx;
+    logic [7:0] regAddr;
+    logic [7:0] dataTx;
+    logic [7:0] dataRx;
     logic busy;
     logic loading;
     logic starting;
@@ -51,7 +51,7 @@ module I2CController_tb();
         .rwbit(opCode),  
         .tenBitAddr(sendTenBitAddr),
         .forceClock(forceClock),
-        .prescale(40),
+        .prescale(0),
         .periphAddr(periphAddr),
         .txBuffer(dataTx),
         .rxBuffer(dataRx),
@@ -89,29 +89,36 @@ module I2CController_tb();
         
         reset = 1;
         periphAddr = 7'h13;
-        opCode = 0;
-        dataTx = 16'hDEAD;
-        regAddr = 16'hCE11;
+        opCode = 1;
+        dataTx = 8'h7D;
+        regAddr = 8'hCE;
         
-        repeat(1000) begin
+        repeat(1) begin
             CycleClock();
         end
         
         start = 1;
         
-        repeat(4000) begin
+        repeat(3) begin
             CycleClock();
         end
         
         start = 0;
-        repeat(4000) begin
+        repeat(40) begin
+            CycleClock();
+        end
+        
+        stop = 0;
+        opCode = 1;
+        
+        repeat(80) begin
             CycleClock();
         end
         
         stop = 1;
         opCode = 1;
         
-        repeat(80000) begin
+        repeat(100) begin
             CycleClock();
         end
     end
