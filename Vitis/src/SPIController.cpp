@@ -1,110 +1,202 @@
 /*
- * SPIController.cpp
+ * SPI_HAL.c
  *
- *  Created on: Dec 31, 2025
- *      Author: Jack Edgely
+ *  Created on: Feb 24, 2025
+ *      Author: edgelyj
  */
 
-#include "sleep.h"
-#include "SpiController.h"
+#include "SPI_HAL.h"
 
-SpiController::SpiController(uint32_t BaseAddressInputs, uint32_t BaseAddressOutputs)
+typedef struct SPI_i_t
 {
-	AXI_IN = (AXI_GPIO_IN*)(BaseAddressInputs);
-	AXI_OUT = (AXI_GPIO_OUT*)(BaseAddressOutputs);
-	this->Init();
+	uint8_t Reset 	  : 1;
+	uint8_t Start 	  : 1;
+	SPI_MODE_t Mode  	  : 2;
+	SPI_BIT_ALIGNMENT_t Alignment : 1;
+	const uint8_t Res : 3;
+	uint8_t Prescale  : 8;
+	uint8_t TxBuffer  : 8;
+} SPI_i_t;
+
+typedef struct SPI_o_t
+{
+	const uint8_t Busy     : 1;
+	const uint8_t Starting : 1;
+	const uint8_t RxBuffer : 8;
+} SPI_o_t;
+
+static volatile uint32_t* SPI_i = (uint32_t*)(SPI_AXI_ADDR);
+static volatile uint32_t* SPI_o = (uint32_t*)(SPI_AXI_ADDR + 0x8);
+static volatile SPI_i_t* SPI_I_T = (SPI_i_t*)(SPI_AXI_ADDR);
+static volatile SPI_o_t* SPI_O_T = (SPI_o_t*)(SPI_AXI_ADDR + 0x8);
+
+const SPI_MODE_t SPI_MODE0 = 0x0;
+const SPI_MODE_t SPI_MODE1 = 0x1;
+const SPI_MODE_t SPI_MODE2 = 0x2;
+const SPI_MODE_t SPI_MODE3 = 0x3;
+
+const SPI_STATUS_t SPI_OK = 0x0;
+const SPI_STATUS_t SPI_BUSY = 0x1;
+const SPI_STATUS_t SPI_STARTING = 0x2;
+const SPI_STATUS_t SPI_TIMEOUT = 0x3;
+const SPI_STATUS_t SPI_INVALID_LENGTH = 0x4;
+
+const SPI_PRESCALE_t SPI_MHz50 = 0;
+const SPI_PRESCALE_t SPI_MHz25 = 2;
+const SPI_PRESCALE_t SPI_MHz12p5 = 6;
+const SPI_PRESCALE_t SPI_MHz10 = 8;
+const SPI_PRESCALE_t SPI_MHz6p25 = 14;
+const SPI_PRESCALE_t SPI_MHz5 = 18;
+const SPI_PRESCALE_t SPI_MHz2p5 = 38;
+const SPI_PRESCALE_t SPI_MHz1 = 98;
+const SPI_PRESCALE_t SPI_KHz500 = 198;
+
+const SPI_BIT_ALIGNMENT_t SPI_LSB = 0x0;
+const SPI_BIT_ALIGNMENT_t SPI_MSB = 0x1;
+
+static inline void invalidType(const char *file, int line)
+{
+	printf("TYPE CHECKER FAIL: FILE %s, LINE %d", file, line);
+}
+static inline void SpiBitAlignmentValid(SPI_BIT_ALIGNMENT_t alignment)
+{
+	if (!(alignment == SPI_LSB || alignment == SPI_MSB))
+	{
+		invalidType(__FILE__, __LINE__);
+	}
+}
+static inline void SpiModeValid(SPI_MODE_t spiMode)
+{
+	if (!(spiMode == SPI_MODE0 || spiMode == SPI_MODE1 || spiMode == SPI_MODE2 || spiMode == SPI_MODE3))
+	{
+		invalidType(__FILE__, __LINE__);
+	}
 }
 
-void SpiController::Init()
+volatile void SpiInit()
 {
-	AXI_IN->Reset = 0;
-	AXI_IN->CS = Idle;
-	AXI_IN->Frequency = MHz25;
-	AXI_IN->TxBuffer = 0xDEADCE11; // Yell
-	AXI_IN->SPIMode = Mode0;
+	*SPI_i &= ~(1 << 0);
+	*SPI_i &= ~(1 << 1);
+	*SPI_i &= ~(SPI_MODE0 << 2);
+	*SPI_i &= ~(SPI_MSB << 4);
+	*SPI_i &= ~(0xFFFF << 8);
+	//SPI_i->Reset = 0;
+	//SPI_i->Start = 0;
+	//SPI_i->Mode = SPI_MODE0;
+	//SPI_i->Alignment = SPI_MSB;
+	//SPI_i->Prescale = 0;
+	//SPI_i->TxBuffer = 0xFF;
+	for (int i = 0; i < 5; i++) {}
+	*SPI_i |= (1 << 0);
+	//SPI_i->Reset = 1;
 }
-
-void SpiController::Enable()
+volatile void SpiReset()
 {
-	AXI_IN->Reset = 1;
+	*SPI_i &= ~(1 << 0);
+	//SPI_i->Reset = 0;
+	for(int i = 0; i < 5; i++) {}
+	//SPI_i->Reset = 1;
+	*SPI_i &= ~(1 << 1);
+	for(int i = 0; i < 5; i++) {}
 }
-
-void SpiController::Disable()
+volatile void SpiSetAlignment(SPI_BIT_ALIGNMENT_t alignment)
 {
-	AXI_IN->Reset = 0;
+	SpiBitAlignmentValid(alignment);
+	if (alignment == SPI_MSB)
+	{
+		*SPI_i |= (1 << 4);
+	}
+	else
+	{
+		*SPI_i &= ~(1 << 4);
+	}
 }
-
-bool SpiController::IsBusy()
+volatile void SpiSetMode(SPI_MODE_t mode)
 {
-	return AXI_OUT->Busy;
+	SpiModeValid(mode);
+	*SPI_i &= ~(0x3 << 2);
+	*SPI_i |= (mode << 2);
+	//SPI_i->Mode = mode;
 }
-
-void SpiController::SetMode(Mode mode)
+volatile void SpiSetPrescale(uint8_t prescale)
 {
-	AXI_IN->SPIMode = mode;
+	*SPI_i &= ~(0xFF << 8);
+	*SPI_i |= (prescale << 8);
 }
-
-void SpiController::SetFrequency(ClockFrequency frequency)
+volatile SPI_STATUS_t SpiWrite(uint8_t *data, uint8_t length)
 {
-	AXI_IN->Frequency = frequency;
+	if (length == 0)
+	{
+		return SPI_INVALID_LENGTH;
+	}
+
+	for (int i = 0; i < length; i++)
+	{
+		/*
+		SPI_i->TxBuffer = *(data + i);
+		while(SPI_o->Busy){}
+		SPI_i->Start = 1;
+		while(!SPI_o->Busy){}
+		SPI_i->Start = 0;
+		*/
+		*SPI_i &= ~(0xFF << 16);
+		*SPI_i |= (*(data + i) << 16);
+		while(*SPI_o & (1)){}
+		*SPI_i |= (1 << 1);
+		while(!(*SPI_o & (1))){}
+		*SPI_i &= ~(1 << 1);
+	}
+
+	while (*SPI_o & (1)){}
+	return SPI_OK;
 }
-
-Mode SpiController::GetMode()
+volatile SPI_STATUS_t SpiReadWrite(uint8_t *dataTx, uint8_t *dataRx, uint8_t length)
 {
-	return AXI_IN->SPIMode;
+	if (length == 0)
+	{
+		return SPI_INVALID_LENGTH;
+	}
+	for (int i = 0; i < length; i++)
+	{
+		/*
+		while(SPI_o->Busy){}
+		SPI_i->TxBuffer = *(dataTx + i);
+		SPI_i->Start = 1;
+		while(!SPI_o->Busy){}
+		SPI_i->Start = 0;
+		while(SPI_o->Busy){}
+		*(dataRx + i) = SPI_o->RxBuffer;
+		*/
+		*SPI_i &= ~(0xFF << 16);
+		*SPI_i |= (*(dataTx + i) << 16);
+		while(*SPI_o & 1){}
+		*SPI_i |= (1 << 1);
+		while(!(*SPI_o & (1))){}
+		*SPI_i &= ~(1 << 1);
+		while(*SPI_o & 1){}
+		*(dataRx + i) = (*SPI_o) >> 2;
+	}
+
+	return SPI_OK;
 }
-
-ClockFrequency SpiController::GetFrequency()
+volatile uint8_t SpiIsBusy()
 {
-	return AXI_IN->Frequency;
+	return *SPI_o & (1 << 0);
+	//return SPI_o->Busy;
 }
-
-void SpiController::WriteBuffer(uint32_t data)
+volatile uint8_t SpiIsStarting()
 {
-	AXI_IN->TxBuffer = data;
-
-	// DO NOT REMOVE THIS COMMAND OTHERWISE THE WHOLE THING BREAKS.
-	// I WISH I WAS JOKING. SERIOUSLY. DON'T REMOVE AND DON'T ASK ME WHY.
-	//		 |		  |
-	//		 |		  |
-	//		 V		  V
-	AXI_IN->Reset = AXI_IN->Reset;
+	return *SPI_o * (1 << 1);
+	//return SPI_o->Starting;
 }
-
-void SpiController::WriteTarget(ChipSelect target)
+volatile void SpiReadBuffer(uint8_t *rxBuffer)
 {
-	// Wait until FPGA reports that the SPI chip is free
-	while (AXI_OUT->Busy){}
-
-	// Update chip select
-	AXI_IN->CS = target;
-
-	// Wait until FPGA reports that the SPI chip is busy
-	while (!AXI_OUT->Busy){}
-
-	// Pull the chip select line high to prevent the FPGA
-	// from sending multiple packets
-	AXI_IN->CS = Idle;
-}
-
-void SpiController::Write(uint32_t data, ChipSelect target)
-{
-	WriteBuffer(data);
-	WriteTarget(target);
-}
-
-uint32_t SpiController::ReadBuffer()
-{
-	// Wait until the FPGA reports that the SPI chip is not busy
-	// (AKA transaction ended, latest data received)
-	while (AXI_OUT->Busy);
-
-	return AXI_OUT->RxBuffer;
-}
-
-SpiController::~SpiController()
-{
-
+	while(*SPI_o & (1 << 0)){}
+	*rxBuffer = (*SPI_o) >> 2;
+	/*
+	while(SPI_o->Busy){}
+	*rxBuffer = SPI_o->RxBuffer;
+	*/
 }
 {
 
