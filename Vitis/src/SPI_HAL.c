@@ -7,6 +7,7 @@
 
 #include "SPI_HAL.h"
 
+/*
 typedef struct SPI_i_t
 {
 	uint8_t Reset 	  : 1;
@@ -24,11 +25,11 @@ typedef struct SPI_o_t
 	const uint8_t Starting : 1;
 	const uint8_t RxBuffer : 8;
 } SPI_o_t;
-
+*/
 static volatile uint32_t* SPI_i = (uint32_t*)(SPI_AXI_ADDR);
 static volatile uint32_t* SPI_o = (uint32_t*)(SPI_AXI_ADDR + 0x8);
-static volatile SPI_i_t* SPI_I_T = (SPI_i_t*)(SPI_AXI_ADDR);
-static volatile SPI_o_t* SPI_O_T = (SPI_o_t*)(SPI_AXI_ADDR + 0x8);
+//static volatile SPI_i_t* SPI_I_T = (SPI_i_t*)(SPI_AXI_ADDR);
+//static volatile SPI_o_t* SPI_O_T = (SPI_o_t*)(SPI_AXI_ADDR + 0x8);
 
 const SPI_MODE_t SPI_MODE0 = 0x0;
 const SPI_MODE_t SPI_MODE1 = 0x1;
