@@ -1,28 +1,35 @@
 /*
- * XADC.cpp
+ * ADC_HAL.c
  *
- *  Created on: Jan 5, 2025
- *      Author: Jack Edgely
+ *  Created on: Mar 16, 2025
+ *      Author: edgelyj
  */
+#include "ADC_HAL.h"
 
-#include "XilinxADC.h"
+const XADC_CHANNEL_t XADC_CH0 = 0x0;
+const XADC_CHANNEL_t XADC_CH1 = 0x1;
+const XADC_CHANNEL_t XADC_CH2 = 0x2;
+const XADC_CHANNEL_t XADC_CH3 = 0x3;
+const XADC_CHANNEL_t XADC_CH4 = 0x4;
+const XADC_CHANNEL_t XADC_CH5 = 0x5;
 
-XADC::XADC()
+static XAdcPs XAdcInst;
+
+static char ChannelMap[6] = {1, 9, 6, 15, 5, 13};
+
+void XADCInit()
 {
-	// Set up the xilinx adc here
+	XAdcPs_Config *ConfigPtr;
+	ConfigPtr = XAdcPs_LookupConfig(XPAR_PS7_XADC_0_DEVICE_ID);
+	XAdcPs_CfgInitialize(&XAdcInst, ConfigPtr, ConfigPtr->BaseAddress);
+	XAdcPs_SetSequencerMode(&XAdcInst, XADCPS_SEQ_MODE_CONTINPASS);
 }
-
-float XADC::ReadVoltage(ADCChannel channel)
+volatile float XADCReadVoltage(XADC_CHANNEL_t channel)
 {
-	return 3.3 * (this->ReadBits(channel) / 4095);
+	float voltage = 3.3 * XADCRead(channel);
+	return voltage / (1 << 16);
 }
-
-uint16_t XADC::ReadBits(ADCChannel channel)
+volatile uint16_t XADCRead(XADC_CHANNEL_t channel)
 {
-	return 0xAA;
+	return XAdcPs_GetAdcData(&XAdcInst, XADCPS_CH_AUX_MIN + ChannelMap[channel]);
 }
-XADC::~XADC()
-{
-	// TODO Auto-generated destructor stub
-}
-
