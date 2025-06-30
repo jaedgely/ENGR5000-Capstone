@@ -1,5 +1,7 @@
 /*
- * NCV7755.cpp
+ *  NCV7755.cpp
+ *
+ *  Banking, the old american art
  *
  *  Created on: Feb 27, 2025
  *      Author: edgelyj
@@ -15,8 +17,9 @@ static const uint8_t writeCommandStartBits = 0x80;
 NCV7755::NCV7755()
 {
 }
-NCV7755::NCV7755(GPIO_PINNUM_t csGpio)
+NCV7755::NCV7755(GPIO_PINHEADER_t header, GPIO_PINNUM_t csGpio)
 {
+	pinheader = header;
 	cs = csGpio;
 }
 // CONSTRUCTOR END
@@ -30,11 +33,16 @@ void NCV7755::Write(uint8_t *command)
 	// Set alignment to MSB
 	SpiSetAlignment(SPI_MSB);
 	// Pull CS line low
-	GPIO_PinSet(cs, GPIO_PIN_RESET);
+	GPIO_PINHEADER_t header = RASPPI;
+	GPIO_PINNUM_t csb = Rpi2;
+	GPIO_PinSet(header, csb, GPIO_PIN_RESET);
+
 	// Write the command
 	SpiWrite(command, 2);
 	// Pull CS line high
-	GPIO_PinSet(cs, GPIO_PIN_SET);
+	GPIO_PinSet(header, csb, GPIO_PIN_SET);
+
+	usleep(1);
 }
 void NCV7755::ReadRegister(uint8_t *command, uint8_t *result)
 {
@@ -44,13 +52,13 @@ void NCV7755::ReadRegister(uint8_t *command, uint8_t *result)
 	// Set alignment to MSB
 	SpiSetAlignment(SPI_MSB);
 	// Pull the CS line low
-	GPIO_PinSet(cs, GPIO_PIN_RESET);
+	GPIO_PinSet(pinheader, cs, GPIO_PIN_RESET);
 	// First command will tell the chip what register to load. Disregard outputs.
 	SpiWrite(command, 2);
 	// Second command will write the same command, but we will read the register contents
 	SpiReadWrite(command, result, 2);
 	// Pull the CS line high
-	GPIO_PinSet(cs, GPIO_PIN_SET);
+	GPIO_PinSet(pinheader, cs, GPIO_PIN_SET);
 }
 // PRIVATE METHOD END
 
@@ -60,33 +68,33 @@ void NCV7755::SetHardwareControl(bool activeMode, bool spiReset)
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.HWCR), (uint8_t)((activeMode << 7) + (spiReset << 6) + 0x00)};
 	Write(command);
 }
-void NCV7755::SetOutput(uint8_t &channels)
+void NCV7755::SetOutput(uint8_t channels)
 {
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.OUT), channels};
 	activeChannels = channels;
 	Write(command);
 }
-void NCV7755::SetBulbInrush(uint8_t &channels)
+void NCV7755::SetBulbInrush(uint8_t channels)
 {
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.BulbInrush), channels};
 	Write(command);
 }
-void NCV7755::SetOpenLoadDiagCurrent(uint8_t &channels)
+void NCV7755::SetOpenLoadDiagCurrent(uint8_t channels)
 {
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.DIAG_IOL), channels};
 	Write(command);
 }
-void NCV7755::SetOpenLoadDiagControl(uint8_t &channels)
+void NCV7755::SetOpenLoadDiagControl(uint8_t channels)
 {
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.DIAG_OLONEN), channels};
 	Write(command);
 }
-void NCV7755::SetInputMap0(uint8_t &channels)
+void NCV7755::SetInputMap0(uint8_t channels)
 {
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.MAPIN_0), channels};
 	Write(command);
 }
-void NCV7755::SetInputMap1(uint8_t &channels)
+void NCV7755::SetInputMap1(uint8_t channels)
 {
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.MAPIN_1), channels};
 	Write(command);
@@ -102,19 +110,19 @@ void NCV7755::SetPWM1Config(uint8_t internalClock, uint8_t dutyCycle)
 	uint8_t command[2] = {(uint8_t)(0x80 + (RegMap.PWM_CR1 << 2) + (internalClock & 0x3)), dutyCycle};
 	Write(command);
 }
-void NCV7755::SetPWMFrequency(uint8_t &prescale)
+void NCV7755::SetPWMFrequency(uint8_t prescale)
 {
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.HWCR_PWM), prescale};
 	Write(command);
 }
 
-void NCV7755::SetPWMConnection(uint8_t &channels)
+void NCV7755::SetPWMConnection(uint8_t channels)
 {
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.PWM_OUT), channels};
 	Write(command);
 }
 
-void NCV7755::SetPWMMapping(uint8_t &channels)
+void NCV7755::SetPWMMapping(uint8_t channels)
 {
 	uint8_t command[2] = {(uint8_t)(0x80 + RegMap.PWM_MAP), channels};
 	Write(command);
