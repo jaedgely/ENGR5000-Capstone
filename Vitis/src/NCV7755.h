@@ -1,15 +1,19 @@
 /*
- * NCV7755.h
+ *  NCV7755.h
  *
- *  Created on: Feb 27, 2025
+ *	Advertising, the new american art
+ *
+ * 	Created on: Feb 27, 2025
  *      Author: edgelyj
  */
 
 #ifndef SRC_NCV7755_H_
 #define SRC_NCV7755_H_
 
-#include "SPI_HAL.h"
-#include "GPIO_HAL.h"
+#include "sleep.h"
+
+#include "HALs/GPIO_HAL.h"
+#include "HALs/SPI_HAL.h"
 
 enum State
 {
@@ -31,6 +35,72 @@ enum DrainChannel
 class NCV7755
 {
 private:
+
+	typedef struct
+	{
+		const uint8_t ADDR = 0x00U;
+		volatile uint8_t CH0  : 1;
+		volatile uint8_t CH1  : 1;
+		volatile uint8_t CH2  : 1;
+		volatile uint8_t CH3  : 1;
+		volatile uint8_t CH4  : 1;
+		volatile uint8_t CH5  : 1;
+		volatile uint8_t CH6  : 1;
+		volatile uint8_t CH7  : 1;
+	} OUT_t;
+
+	typedef struct
+	{
+		const uint8_t ADDR = 0x01U;
+		volatile uint8_t CH0  : 1;
+		volatile uint8_t CH1  : 1;
+		volatile uint8_t CH2  : 1;
+		volatile uint8_t CH3  : 1;
+		volatile uint8_t CH4  : 1;
+		volatile uint8_t CH5  : 1;
+		volatile uint8_t CH6  : 1;
+		volatile uint8_t CH7  : 1;
+	} BIM_t;
+
+	typedef struct
+	{
+		const uint8_t ADDR = 0x04U;
+		volatile uint8_t CH0  : 1;
+		volatile uint8_t CH1  : 1;
+		volatile uint8_t CH2  : 1;
+		volatile uint8_t CH3  : 1;
+		volatile uint8_t CH4  : 1;
+		volatile uint8_t CH5  : 1;
+		volatile uint8_t CH6  : 1;
+		volatile uint8_t CH7  : 1;
+	} MAPIN0_t;
+
+	typedef struct
+	{
+		const uint8_t ADDR = 0x05U;
+		volatile uint8_t CH0  : 1;
+		volatile uint8_t CH1  : 1;
+		volatile uint8_t CH2  : 1;
+		volatile uint8_t CH3  : 1;
+		volatile uint8_t CH4  : 1;
+		volatile uint8_t CH5  : 1;
+		volatile uint8_t CH6  : 1;
+		volatile uint8_t CH7  : 1;
+	} MAPIN1_t;
+
+	typedef struct
+	{
+		const uint8_t ADDR = 0x06U;
+		volatile uint8_t CH0  : 1;
+		volatile uint8_t CH1  : 1;
+		volatile uint8_t CH2  : 1;
+		volatile uint8_t CH3  : 1;
+		volatile uint8_t CH4  : 1;
+		volatile uint8_t CH5  : 1;
+		volatile uint8_t CH6  : 1;
+		volatile uint8_t CH7  : 1;
+	} INST;
+
 	typedef struct REGMAP_t
 	{
 		/*
@@ -210,12 +280,13 @@ private:
 	volatile uint8_t activeChannels;
 	void Write(uint8_t *command);
 	void ReadRegister(uint8_t *command, uint8_t *result);
-	GPIO_PINNUM_t cs;
+	volatile uint8_t pinheader;
+	volatile uint32_t cs;
     REGMAP_t RegMap;
 public:
 
 	NCV7755();
-	NCV7755(GPIO_PINNUM_t csGpio);
+	NCV7755(GPIO_PINHEADER_t header, GPIO_PINNUM_t csGpio);
 
 	/* 	The following methods which take uint8_t input will set the channels to the binary equivalent
 	 * 	Example: All channels are currently OFF. If you write 0xAA (0b10101010), then,
@@ -224,11 +295,11 @@ public:
 	void SetState(State state);
 
 	void SetHardwareControl(bool activeMode, bool spiReset);
-	void SetOutput(uint8_t &channels);
-	void SetBulbInrush(uint8_t &channels);
-	void SetOpenLoadDiagCurrent(uint8_t &channels);
-	void SetOpenLoadDiagControl(uint8_t &channels);
-	void ClearOutputLatchBits(uint8_t &channels);
+	void SetOutput(uint8_t channels);
+	void SetBulbInrush(uint8_t channels);
+	void SetOpenLoadDiagCurrent(uint8_t channels);
+	void SetOpenLoadDiagControl(uint8_t channels);
+	void ClearOutputLatchBits(uint8_t channels);
 
 	void GetOutput(uint8_t &channels);
 	void GetBulbInrush(uint8_t &channels);
@@ -257,21 +328,21 @@ public:
 	void GetOpenLoadStatus(uint8_t &channels);
 	void GetInputStatus(bool &transSuccessful, bool &inStatus1, bool &inStatus2);
 
-	void SetInputMap0(uint8_t &channels);
-	void SetInputMap1(uint8_t &channels);
+	void SetInputMap0(uint8_t channels);
+	void SetInputMap1(uint8_t channels);
 	void SetInputMap0(DrainChannel channel);
 	void SetInputMap1(DrainChannel channel);
 
 	// PWM Control
-	void SetPWMFrequency(uint8_t &prescale);
+	void SetPWMFrequency(uint8_t prescale);
 
 	void SetPWM0Output(bool enabled);
 
 	void SetPWM0Config(uint8_t internalClock, uint8_t dutyCycle);
 	void SetPWM1Config(uint8_t internalClock, uint8_t dutyCycle);
 
-	void SetPWMConnection(uint8_t &channels);
-	void SetPWMMapping(uint8_t &channels);
+	void SetPWMConnection(uint8_t channels);
+	void SetPWMMapping(uint8_t channels);
 	void MapInput0(DrainChannel channel);
 	void MapInput1(DrainChannel channel);
 
